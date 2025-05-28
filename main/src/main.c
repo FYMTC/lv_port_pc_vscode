@@ -89,16 +89,19 @@ int main(int argc, char **argv)
   /* - lv_demo_stress(); */
   /* - lv_example_label_1(); */
   /* - etc. */
-  lv_demo_widgets();
+  //lv_demo_widgets();
+  //lv_demo_benchmark();
+  lv_demo_stress();
 
   while(1) {
     /* Periodically call the lv_task handler.
      * It could be done in a timer interrupt or an OS task too.*/
-    lv_timer_handler();
+    uint32_t time_till_next = lv_timer_handler();
+    if(time_till_next == LV_NO_TIMER_READY) time_till_next = LV_DEF_REFR_PERIOD;
 #ifdef _MSC_VER
     Sleep(5);
 #else
-    usleep(5 * 1000);
+    usleep(time_till_next*1000);
 #endif
   }
 
