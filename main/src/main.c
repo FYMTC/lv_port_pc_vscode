@@ -19,9 +19,11 @@
   #include <unistd.h>
   #include <pthread.h>
 #endif
+
 #include "lvgl/lvgl.h"
 #include "lvgl/examples/lv_examples.h"
 #include "lvgl/demos/lv_demos.h"
+#include "../ui/my_ui.h" // 包含自定义UI头文件
 
 /*********************
  *      DEFINES
@@ -70,6 +72,7 @@ extern void freertos_main(void);
  *   GLOBAL FUNCTIONS
  **********************/
 
+
 int main(int argc, char **argv)
 {
   (void)argc; /*Unused*/
@@ -79,7 +82,10 @@ int main(int argc, char **argv)
   lv_init();
 
   /*Initialize the HAL (display, input devices, tick) for LVGL*/
-  hal_init(320, 480);
+  hal_init(240, 320);
+
+  // 调用自定义UI初始化函数
+  my_ui_init();
 
   #if LV_USE_OS == LV_OS_NONE
 
@@ -91,7 +97,8 @@ int main(int argc, char **argv)
   /* - etc. */
   //lv_demo_widgets();
   //lv_demo_benchmark();
-  lv_demo_stress();
+  //lv_demo_stress();
+  //lv_demo_music();
 
   while(1) {
     /* Periodically call the lv_task handler.

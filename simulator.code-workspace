@@ -28,6 +28,7 @@
 			"glob.h": "c",
 			"lvgl.h": "c"
 		},
+		"Codegeex.RepoIndex": true,
 	},
 	// tasks.json section
 	"tasks": {
