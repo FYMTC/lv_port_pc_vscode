@@ -82,10 +82,8 @@ int main(int argc, char **argv)
   lv_init();
 
   /*Initialize the HAL (display, input devices, tick) for LVGL*/
+  //hal_init(800, 600);
   hal_init(240, 320);
-
-  // 调用自定义UI初始化函数
-  my_ui_init();
 
   #if LV_USE_OS == LV_OS_NONE
 
@@ -99,7 +97,7 @@ int main(int argc, char **argv)
   //lv_demo_benchmark();
   //lv_demo_stress();
   //lv_demo_music();
-
+  my_ui_init();
   while(1) {
     /* Periodically call the lv_task handler.
      * It could be done in a timer interrupt or an OS task too.*/

@@ -4,6 +4,9 @@ cmake_minimum_required(VERSION 3.12.4)
 # 定义项目名称和支持的语言
 project(lvgl C CXX)
 
+# 导出编译命令用于 IntelliSense
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 
 # 设置 FreeRTOS 的端口类型（如在 WSL 下使用 Posix）
 set(FREERTOS_PORT GCC_POSIX CACHE STRING "Port for FreeRTOS on Posix environment")
@@ -60,7 +63,7 @@ option(LV_USE_FREETYPE "Use freetype library" OFF)        # 是否使用 freetyp
 
 # 设置 C 和 C++ 标准
 set(CMAKE_C_STANDARD 99)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 
@@ -74,9 +77,21 @@ set(WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 find_package(SDL2 REQUIRED)
 
 
-# 移除 ARM 相关编译选项，使用本地架构优化
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
+# 根据编译器类型设置优化选项
+if(MSVC)
+    # MSVC 编译器优化选项
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /O2")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /O2")
+    # 设置 UTF-8 编码支持
+    add_compile_options(/utf-8)
+else()
+    # GCC/Clang 编译器优化选项
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
+    # Add MinGW specific defines for format macros
+    add_definitions(-D__STDC_FORMAT_MACROS)
+    add_definitions(-D_WIN32_WINNT=0x0601)
+endif()
 
 
 # 根据选项添加编译宏定义
@@ -91,6 +106,10 @@ add_subdirectory(lvgl)
 target_include_directories(lvgl PUBLIC ${PROJECT_SOURCE_DIR} ${SDL2_INCLUDE_DIRS})
 
 
+
+# 添加 ui 子库
+add_subdirectory(main/ui)
+
 # 创建主程序，根据是否启用 FreeRTOS 选择不同的源文件和链接库
 if(USE_FREERTOS)
     add_executable(main
@@ -100,14 +119,15 @@ if(USE_FREERTOS)
         ${PROJECT_SOURCE_DIR}/main/src/FreeRTOS_Posix_Port.c
         ${FREERTOS_SOURCES}  # 仅在启用 FreeRTOS 时添加
     )
-    # 链接 FreeRTOS 相关库
-    target_link_libraries(main freertos_config FreeRTOS)
+    # 链接 FreeRTOS 相关库和 ui 库
+    target_link_libraries(main freertos_config FreeRTOS ui)
 else()
     add_executable(main
         ${PROJECT_SOURCE_DIR}/main/src/main.c
         ${PROJECT_SOURCE_DIR}/main/src/mouse_cursor_icon.c
-        ${PROJECT_SOURCE_DIR}/main/ui/my_ui.c  #添加自定义 UI 源文件
     )
+    # 链接 ui 库
+    target_link_libraries(main ui)
 endif()
 
 
@@ -186,41 +206,57 @@ endif()
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     message(STATUS "Debug mode enabled") # 启用调试模式
 
-    target_compile_options(lvgl PRIVATE
-        -pedantic-errors
-        -Wall
-        -Wclobbered
-        -Wdeprecated
-        -Wdouble-promotion
-        -Wempty-body
-        -Wextra
-        -Wformat-security
-        -Wmaybe-uninitialized
-        # -Wmissing-prototypes
-        -Wpointer-arith
-        -Wmultichar
-        -Wno-pedantic # 暂时忽略，属性表中函数转指针
-        -Wreturn-type
-        -Wshadow
-        -Wshift-negative-value
-        -Wsizeof-pointer-memaccess
-        -Wtype-limits
-        -Wundef
-        -Wuninitialized
-        -Wunreachable-code
-        -Wfloat-conversion
-        -Wstrict-aliasing
-    )
+    if(MSVC)
+        # MSVC 特定的警告选项
+        target_compile_options(lvgl PRIVATE
+            /W4                 # 启用高级警告
+            /WX-                # 警告不作为错误处理
+            /permissive-        # 标准一致性模式
+        )
+    else()
+        # GCC/Clang 特定的警告选项
+        target_compile_options(lvgl PRIVATE
+            -pedantic-errors
+            -Wall
+            -Wclobbered
+            -Wdeprecated
+            -Wdouble-promotion
+            -Wempty-body
+            -Wextra
+            -Wformat-security
+            -Wmaybe-uninitialized
+            # -Wmissing-prototypes
+            -Wpointer-arith
+            -Wmultichar
+            -Wno-pedantic # 暂时忽略，属性表中函数转指针
+            -Wreturn-type
+            -Wshadow
+            -Wshift-negative-value
+            -Wsizeof-pointer-memaccess
+            -Wtype-limits
+            -Wundef
+            -Wuninitialized
+            -Wunreachable-code
+            -Wfloat-conversion
+            -Wstrict-aliasing
+        )
+    endif()
 
     # AddressSanitizer 内存检测工具相关配置
     if (ASAN)
         message(STATUS "AddressSanitizer enabled")
 
-        # 添加 AddressSanitizer 编译和链接选项
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer")
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address -fno-omit-frame-pointer")
-        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
-        set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=address")
+        if(MSVC)
+            # MSVC 的 AddressSanitizer 选项
+            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /fsanitize=address")
+            set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /fsanitize=address")
+        else()
+            # GCC/Clang 的 AddressSanitizer 选项
+            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer")
+            set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address -fno-omit-frame-pointer")
+            set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
+            set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=address")
+        endif()
     else()
         message(STATUS "AddressSanitizer disabled")
     endif()
