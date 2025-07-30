@@ -3,7 +3,8 @@
 #include <cstdlib>
 #include <ctime>
 #include <cstdio>
-
+#include "esp_log.h"
+static const char* TAG = "WiFiManager";
 // 全局状态变量
 static wifi_manager_status_t current_status = WIFI_MANAGER_DISCONNECTED;
 static wifi_manager_config_t current_config = {};
@@ -239,4 +240,26 @@ esp_err_t wifi_manager_register_status_callback(wifi_manager_status_cb_t callbac
 esp_err_t wifi_manager_unregister_status_callback(void) {
     status_callback = nullptr;
     return ESP_OK;
+}
+esp_err_t wifi_manager_enable(void)
+{
+    ESP_LOGI(TAG, "Enabling WiFi...");
+    esp_err_t ret = ESP_OK;
+    return ret;
+}
+
+esp_err_t wifi_manager_disable(void)
+{
+    ESP_LOGI(TAG, "Disabling WiFi...");
+    esp_err_t ret = ESP_OK;
+    return ret;
+}
+
+bool wifi_manager_is_enabled(void)
+{
+    bool enabled;
+    //随机返回WiFi是否启用
+    enabled = (rand() % 2) == 0; // 50%概率启用
+    ESP_LOGI(TAG, "WiFi is %s", enabled ? "enabled" : "disabled");
+    return enabled;
 }

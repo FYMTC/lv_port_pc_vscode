@@ -182,10 +182,10 @@ static void time_callback(lv_event_t *e) {
     std::cout<<"TIME clicked!"<<std::endl;
 }
 
-static void pmu_callback(lv_event_t *e) {
-    g_pageManager.gotoPage("page_pmu", LV_SCR_LOAD_ANIM_FADE_OUT, 300);
-    std::cout<<"PMU clicked!"<<std::endl;
-}
+// static void pmu_callback(lv_event_t *e) {
+//     g_pageManager.gotoPage("page_pmu", LV_SCR_LOAD_ANIM_FADE_OUT, 300);
+//     std::cout<<"PMU clicked!"<<std::endl;
+// }
 
 static void mpu6050_callback(lv_event_t *e) {
     g_pageManager.gotoPage("page_mpu6050", LV_SCR_LOAD_ANIM_FADE_OUT, 300);
@@ -232,7 +232,7 @@ static const MenuItem menu_items[] = {
     {LV_SYMBOL_SETTINGS, "Settings", settings_callback},
     {LV_SYMBOL_WIFI, "WIFI", wifi_callback},
     {MY_SYMBOL_TIME, "TIME", time_callback},
-    {MY_SYMBOL_CHIP, "PMU", pmu_callback},
+    // {MY_SYMBOL_CHIP, "PMU", pmu_callback},
     {MY_SYMBOL_GPS, "MPU6050", mpu6050_callback},
     {MY_SYMBOL_COMPASS, "QMC5883L", qmc5883l_callback},
     {MY_SYMBOL_HEART, "MAX30105", max30105_callback},

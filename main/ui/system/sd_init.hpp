@@ -1,8 +1,30 @@
 // Mock SD init for PC compilation
 #pragma once
 
-// 重定向到模拟实现
-#include "sd_init_mock.hpp"
+#include <cstdint>
+
+// 模拟ESP32类型定义
+typedef void* TaskHandle_t;
+typedef void* QueueHandle_t;
+typedef struct {
+    char name[32];
+    uint32_t capacity;
+} sdmmc_card_t;
+
+// 模拟esp_err_t类型
+typedef int esp_err_t;
+#define ESP_OK 0
+
+// GPIO和其他定义
+#define GPIO_NUM_4 4
+#define GPIO_NUM_5 5
+#define GPIO_NUM_10 10
+#define GPIO_NUM_16 16
+#define GPIO_NUM_6 6
+#define GPIO_NUM_2 2
+#define SPI2_HOST 1
+#define IRAM_ATTR
+
 #define SDMMC_DATA2_GPIO GPIO_NUM_4
 #define SDMMC_DATA3_GPIO GPIO_NUM_5
 #define SD_DET_PIN GPIO_NUM_10
@@ -19,10 +41,11 @@
 
 // SD卡信息结构体
 typedef struct {
-    char name[16];
-    uint32_t capacity_mb;
+    char name[32];
+    uint64_t size_bytes;
     uint32_t sector_size;
     bool is_mounted;
+    char mount_point[16];
 } sd_card_info_t;
 
 // 外部变量声明
@@ -38,5 +61,5 @@ bool is_sd_card_mounted();
 esp_err_t get_sd_card_info(sd_card_info_t *info);
 
 // 内部任务和中断处理函数声明
-void IRAM_ATTR gpio_isr_handler(void *arg);
+void gpio_isr_handler(void *arg);
 void SD_gpio_task(void *arg);

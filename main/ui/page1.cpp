@@ -5,16 +5,16 @@
 #include <iostream>
 extern PageManager g_pageManager;
 
-#define CANVAS_WIDTH  300
+#define CANVAS_WIDTH  240
 #define CANVAS_HEIGHT  200
-
+lv_obj_t * chart = NULL;
+lv_obj_t * canvas = NULL;
 static void timer_cb(lv_timer_t * timer)
 {
     static int16_t counter = 0;
     const char * string = "lol~ I'm wavvvvvvving~>>>";
     const int16_t string_len = lv_strlen(string);
 
-    lv_obj_t * canvas = (lv_obj_t *)lv_timer_get_user_data(timer);
     lv_layer_t layer;
     lv_canvas_init_layer(canvas, &layer);
 
@@ -47,8 +47,17 @@ static void timer_cb(lv_timer_t * timer)
         }
     }
 
-    lv_canvas_finish_layer(canvas, &layer);
+    lv_chart_series_t * ser = lv_chart_get_series_next(chart, NULL);
+    lv_chart_set_next_value(chart, ser, (int32_t)lv_rand(10, 90));
+    uint32_t p = lv_chart_get_point_count(chart);
+    uint32_t s = lv_chart_get_x_start_point(chart, ser);
+    int32_t * a = lv_chart_get_series_y_array(chart, ser);
+    a[(s + 1) % p] = LV_CHART_POINT_NONE;
+    a[(s + 2) % p] = LV_CHART_POINT_NONE;
+    a[(s + 2) % p] = LV_CHART_POINT_NONE;
 
+    lv_chart_refresh(chart);
+    lv_canvas_finish_layer(canvas, &layer);
     counter++;
 }
 
@@ -82,15 +91,28 @@ lv_obj_t* createPage1() {
     lv_obj_add_event_cb(screen_backbtn, screen_backbtn_cb, LV_EVENT_CLICKED, NULL);
 
 
-    lv_obj_t * canvas = lv_canvas_create(status);
+    canvas = lv_canvas_create(status);
     lv_obj_set_size(canvas, CANVAS_WIDTH, CANVAS_HEIGHT);
-
     lv_obj_center(canvas);
-
     lv_canvas_set_draw_buf(canvas, &draw_buf);
 
-    lv_timer_t * timer = lv_timer_create(timer_cb, 16, canvas);
+    chart = lv_chart_create(status);
+    lv_chart_set_update_mode(chart, LV_CHART_UPDATE_MODE_CIRCULAR);
+    lv_obj_set_style_size(chart, 0, 0, LV_PART_INDICATOR);
+    lv_obj_set_size(chart, LV_PCT(100), 150);
+    lv_obj_center(chart);
 
+    lv_chart_set_point_count(chart, 100);
+    lv_chart_series_t * ser = lv_chart_add_series(chart, lv_palette_main(LV_PALETTE_RED), LV_CHART_AXIS_PRIMARY_Y);
+    /*Prefill with data*/
+    uint32_t i;
+    for(i = 0; i < 100; i++) {
+        lv_chart_set_next_value(chart, ser, (int32_t)lv_rand(10, 90));
+    }
+
+
+
+    lv_timer_t * timer = lv_timer_create(timer_cb, 10, NULL);
     lv_obj_set_user_data(page1, timer);
 
     return page1;

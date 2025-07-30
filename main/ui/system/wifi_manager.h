@@ -220,8 +220,8 @@ esp_err_t wifi_manager_stop_scan(void);
  * @param actual_count 实际获取到的AP数量（输出参数）
  * @return ESP_OK 获取成功，ESP_FAIL 获取失败
  */
-esp_err_t wifi_manager_get_scan_results(wifi_manager_ap_info_t* ap_list, 
-                                       uint16_t max_count, 
+esp_err_t wifi_manager_get_scan_results(wifi_manager_ap_info_t* ap_list,
+                                       uint16_t max_count,
                                        uint16_t* actual_count);
 
 /**
@@ -302,6 +302,34 @@ esp_err_t wifi_manager_register_time_sync_callback(wifi_manager_time_sync_cb_t c
  * @return ESP_OK 设置成功，ESP_FAIL 设置失败
  */
 esp_err_t wifi_manager_set_timezone(const char* timezone);
+
+/**
+ * 启用WiFi功能
+ * @return ESP_OK 启用成功，ESP_FAIL 启用失败
+ */
+esp_err_t wifi_manager_enable(void);
+
+/**
+ * 禁用WiFi功能（释放所有资源）
+ * @return ESP_OK 禁用成功，ESP_FAIL 禁用失败
+ */
+esp_err_t wifi_manager_disable(void);
+
+/**
+ * 检查WiFi功能是否已启用
+ * @return true 已启用，false 已禁用
+ */
+bool wifi_manager_is_enabled(void);
+
+
+
+
+
+
+
+
+
+
 
 #ifdef __cplusplus
 }

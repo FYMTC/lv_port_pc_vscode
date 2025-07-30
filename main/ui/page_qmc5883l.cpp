@@ -24,7 +24,9 @@ static lv_timer_t *g_update_timer = NULL;
 static lv_obj_t *g_status_label = NULL;
 static lv_obj_t *g_heading_label = NULL;
 static lv_obj_t *g_mag_magnitude_label = NULL;
-static lv_obj_t *g_compass_canvas = NULL;
+static lv_obj_t *g_compass_scale = NULL;
+static lv_obj_t *g_compass_center_label = NULL;
+static lv_obj_t *g_compass_needle_symbol = NULL;
 static lv_obj_t *g_mag_values_label = NULL;
 static lv_obj_t *g_mag_chart = NULL;
 
@@ -32,10 +34,6 @@ static lv_obj_t *g_mag_chart = NULL;
 static lv_chart_series_t *g_mag_x_series = NULL;
 static lv_chart_series_t *g_mag_y_series = NULL;
 static lv_chart_series_t *g_mag_z_series = NULL;
-
-// 指南针画布缓冲区
-#define COMPASS_SIZE 160
-static lv_color_t compass_buf[COMPASS_SIZE * COMPASS_SIZE];
 
 // 当前数据
 static qmc5883l_service_data_t g_current_data = {
@@ -63,10 +61,75 @@ static void create_data_section(lv_obj_t *parent);
 static void create_control_buttons(lv_obj_t *parent);
 static void qmc5883l_data_callback(const qmc5883l_service_data_t *data);
 static void update_ui_timer_cb(lv_timer_t *timer);
-static void draw_compass(lv_obj_t *canvas, float heading, float magnitude);
+static void update_compass(float heading, float magnitude);
 static void update_mag_chart(const qmc5883l_service_data_t *data);
 static void apply_data_filter(qmc5883l_service_data_t *data);
 static float calculate_filtered_average(float *history, int size);
+static const char *heading_to_cardinal(int32_t heading);
+static void compass_draw_event_cb(lv_event_t *e);
+
+/**
+ * 将航向角度转换为方位名称
+ */
+static const char *heading_to_cardinal(int32_t heading)
+{
+    /* 规范化航向到 [0, 360) 范围 */
+    while (heading < 0)
+        heading += 360;
+    while (heading >= 360)
+        heading -= 360;
+
+    if (heading < 23)
+        return "N";
+    else if (heading < 68)
+        return "NE";
+    else if (heading < 113)
+        return "E";
+    else if (heading < 158)
+        return "SE";
+    else if (heading < 203)
+        return "S";
+    else if (heading < 248)
+        return "SW";
+    else if (heading < 293)
+        return "W";
+    else if (heading < 338)
+        return "NW";
+
+    return "N";
+}
+
+/**
+ * 指南针绘制事件回调
+ */
+static void compass_draw_event_cb(lv_event_t *e)
+{
+    lv_draw_task_t *draw_task = lv_event_get_draw_task(e);
+    lv_draw_dsc_base_t *base_dsc = (lv_draw_dsc_base_t *)lv_draw_task_get_draw_dsc(draw_task);
+    lv_draw_label_dsc_t *label_draw_dsc = lv_draw_task_get_label_dsc(draw_task);
+    lv_draw_line_dsc_t *line_draw_dsc = lv_draw_task_get_line_dsc(draw_task);
+
+    if (base_dsc->part == LV_PART_INDICATOR)
+    {
+        if (label_draw_dsc)
+        {
+            // 突出显示北方向标签
+            if (base_dsc->id1 == 0)
+            {
+                label_draw_dsc->color = lv_palette_main(LV_PALETTE_RED);
+            }
+        }
+        if (line_draw_dsc)
+        {
+            // 突出显示北方向刻度线
+            if (base_dsc->id1 == 0)
+            {
+                line_draw_dsc->color = lv_palette_main(LV_PALETTE_RED);
+                line_draw_dsc->width = 4;
+            }
+        }
+    }
+}
 
 /**
  * 应用数据滤波
@@ -166,13 +229,51 @@ static void create_compass_section(lv_obj_t *parent)
     lv_obj_set_flex_flow(compass_cont, LV_FLEX_FLOW_COLUMN); // 改为竖向布局
     lv_obj_set_flex_align(compass_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-    // 指南针画布 - 减小尺寸适配竖屏
-    g_compass_canvas = lv_canvas_create(compass_cont);
-    lv_canvas_set_buffer(g_compass_canvas, compass_buf, COMPASS_SIZE, COMPASS_SIZE, LV_COLOR_FORMAT_RGB565);
-    lv_obj_set_style_bg_color(g_compass_canvas, lv_color_white(), 0);
-    lv_obj_set_style_border_width(g_compass_canvas, 2, 0);
-    lv_obj_set_style_border_color(g_compass_canvas, lv_color_hex(0x757575), 0);
-    lv_obj_set_style_radius(g_compass_canvas, COMPASS_SIZE / 2, 0);
+    // 创建指南针刻度盘
+    g_compass_scale = lv_scale_create(compass_cont);
+    lv_obj_set_size(g_compass_scale, 160, 160);
+    lv_scale_set_mode(g_compass_scale, LV_SCALE_MODE_ROUND_INNER);
+    lv_obj_set_align(g_compass_scale, LV_ALIGN_CENTER);
+
+    // 设置刻度参数
+    lv_scale_set_total_tick_count(g_compass_scale, 37); // 每10度一个刻度，共360/10+1=37个
+    lv_scale_set_major_tick_every(g_compass_scale, 3);  // 每30度一个主刻度
+
+    // 设置刻度样式
+    lv_obj_set_style_length(g_compass_scale, 5, LV_PART_ITEMS);      // 次刻度长度
+    lv_obj_set_style_length(g_compass_scale, 12, LV_PART_INDICATOR); // 主刻度长度
+    lv_obj_set_style_line_width(g_compass_scale, 3, LV_PART_INDICATOR); // 主刻度宽度
+
+    // 设置范围和角度
+    lv_scale_set_range(g_compass_scale, 0, 360);
+    lv_scale_set_angle_range(g_compass_scale, 360);
+    lv_scale_set_rotation(g_compass_scale, 270); // 北方向指向上方
+
+    // 设置自定义标签
+    static const char *custom_labels[] = {"N", "30", "60", "E", "120", "150", "S", "210", "240", "W", "300", "330", NULL};
+    lv_scale_set_text_src(g_compass_scale, custom_labels);
+
+    // 添加绘制事件处理
+    lv_obj_add_event_cb(g_compass_scale, compass_draw_event_cb, LV_EVENT_DRAW_TASK_ADDED, NULL);
+    lv_obj_add_flag(g_compass_scale, LV_OBJ_FLAG_SEND_DRAW_TASK_EVENTS);
+
+    // 创建中心标签显示航向数值
+    g_compass_center_label = lv_label_create(compass_cont);
+    lv_obj_set_width(g_compass_center_label, 80);
+    lv_obj_set_align(g_compass_center_label, LV_ALIGN_CENTER);
+    lv_label_set_text(g_compass_center_label, "0°\nN");
+    lv_obj_set_style_text_align(g_compass_center_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(g_compass_center_label, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(g_compass_center_label, lv_color_hex(0x2196F3), 0);
+
+    // 创建指北针符号
+    g_compass_needle_symbol = lv_label_create(g_compass_scale);
+    lv_obj_set_align(g_compass_needle_symbol, LV_ALIGN_TOP_MID);
+    lv_obj_set_y(g_compass_needle_symbol, 8);
+    lv_label_set_text(g_compass_needle_symbol, LV_SYMBOL_UP);
+    lv_obj_set_style_text_align(g_compass_needle_symbol, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(g_compass_needle_symbol, lv_palette_main(LV_PALETTE_RED), 0);
+    lv_obj_set_style_text_font(g_compass_needle_symbol, &lv_font_montserrat_16, 0);
 
     // 航向信息容器 - 水平布局显示航向和磁场强度
     lv_obj_t *heading_cont = lv_obj_create(compass_cont);
@@ -223,9 +324,6 @@ static void create_compass_section(lv_obj_t *parent)
     lv_label_set_text(g_mag_magnitude_label, "--- mG");
     lv_obj_set_style_text_font(g_mag_magnitude_label, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(g_mag_magnitude_label, lv_color_hex(0xFF5722), 0);
-
-    // 初始化指南针
-    draw_compass(g_compass_canvas, 0.0f, 0.0f);
 }
 
 /**
@@ -446,9 +544,9 @@ static void update_ui_timer_cb(lv_timer_t *timer)
     }
 
     // 更新指南针
-    if (g_compass_canvas)
+    if (g_compass_scale)
     {
-        draw_compass(g_compass_canvas, g_current_data.heading, g_current_data.magnitude);
+        update_compass(g_current_data.heading, g_current_data.magnitude);
     }
 
     // 更新图表
@@ -456,94 +554,38 @@ static void update_ui_timer_cb(lv_timer_t *timer)
 }
 
 /**
- * 绘制指南针
+ * 更新指南针显示
  */
-static void draw_compass(lv_obj_t *canvas, float heading, float magnitude)
+static void update_compass(float heading, float magnitude)
 {
-    if (!canvas)
+    if (!g_compass_scale)
         return;
 
-    // 清除画布
-    lv_canvas_fill_bg(canvas, lv_color_white(), LV_OPA_COVER);
+    // 更新刻度盘旋转，使指北针指向磁北方向
+    // 270度减去航向角度，因为0度对应右侧，需要调整到顶部
+    lv_scale_set_rotation(g_compass_scale, 270 - (int32_t)heading);
 
-    int center_x = COMPASS_SIZE / 2;
-    int center_y = COMPASS_SIZE / 2;
-    int radius = COMPASS_SIZE / 2 - 10;
-
-    // 初始化层用于绘制
-    lv_layer_t layer;
-    lv_canvas_init_layer(canvas, &layer);
-
-    // 绘制圆形刻度
-    lv_draw_line_dsc_t line_dsc;
-    lv_draw_line_dsc_init(&line_dsc);
-    line_dsc.color = lv_color_hex(0x757575);
-    line_dsc.width = 2;
-
-    for (int i = 0; i < 360; i += 10)
+    // 更新中心标签
+    if (g_compass_center_label)
     {
-        float angle_rad = i * M_PI / 180.0f;
-        int line_len = (i % 30 == 0) ? 15 : 8; // 主刻度长，次刻度短
-
-        line_dsc.p1.x = (int32_t)(center_x + (radius - line_len) * cosf(angle_rad));
-        line_dsc.p1.y = (int32_t)(center_y + (radius - line_len) * sinf(angle_rad));
-        line_dsc.p2.x = (int32_t)(center_x + radius * cosf(angle_rad));
-        line_dsc.p2.y = (int32_t)(center_y + radius * sinf(angle_rad));
-
-        lv_draw_line(&layer, &line_dsc);
+        const char *direction = heading_to_cardinal((int32_t)heading);
+        lv_label_set_text_fmt(g_compass_center_label, "%.0f°\n%s", heading, direction);
     }
 
-    // 绘制指南针指针 - 降低显示阈值
-    if (magnitude >= 0.1f)
+    // 根据磁场强度调整指针颜色
+    if (g_compass_needle_symbol)
     {
-        float angle_rad = (heading - 90) * M_PI / 180.0f;
-
-        // 北针（红色）- 指向磁北
-        line_dsc.color = lv_color_hex(0xF44336);
-        line_dsc.width = 4;
-        line_dsc.p1.x = center_x;
-        line_dsc.p1.y = center_y;
-        line_dsc.p2.x = (int32_t)(center_x + (radius - 20) * cosf(angle_rad));
-        line_dsc.p2.y = (int32_t)(center_y + (radius - 20) * sinf(angle_rad));
-        lv_draw_line(&layer, &line_dsc);
-
-        // 南针（灰色） - 指向相反方向
-        line_dsc.color = lv_color_hex(0x757575);
-        line_dsc.width = 2;
-        line_dsc.p1.x = center_x;
-        line_dsc.p1.y = center_y;
-        line_dsc.p2.x = (int32_t)(center_x - (radius - 30) * cosf(angle_rad));
-        line_dsc.p2.y = (int32_t)(center_y - (radius - 30) * sinf(angle_rad));
-        lv_draw_line(&layer, &line_dsc);
+        if (magnitude >= 0.1f)
+        {
+            // 有效磁场数据，使用红色指针
+            lv_obj_set_style_text_color(g_compass_needle_symbol, lv_palette_main(LV_PALETTE_RED), 0);
+        }
+        else
+        {
+            // 无效或弱磁场数据，使用灰色指针
+            lv_obj_set_style_text_color(g_compass_needle_symbol, lv_color_hex(0xCCCCCC), 0);
+        }
     }
-    else
-    {
-        // 如果没有磁场数据，显示一个灰色的指示器
-        line_dsc.color = lv_color_hex(0xCCCCCC);
-        line_dsc.width = 2;
-        line_dsc.p1.x = center_x;
-        line_dsc.p1.y = center_y - (radius - 20);
-        line_dsc.p2.x = center_x;
-        line_dsc.p2.y = center_y + (radius - 20);
-        lv_draw_line(&layer, &line_dsc);
-
-        line_dsc.p1.x = center_x - (radius - 20);
-        line_dsc.p1.y = center_y;
-        line_dsc.p2.x = center_x + (radius - 20);
-        line_dsc.p2.y = center_y;
-        lv_draw_line(&layer, &line_dsc);
-    }
-
-    // 绘制中心点
-    lv_draw_rect_dsc_t rect_dsc;
-    lv_draw_rect_dsc_init(&rect_dsc);
-    rect_dsc.bg_color = lv_color_hex(0x424242);
-    rect_dsc.radius = 4;
-    lv_area_t center_area = {center_x - 4, center_y - 4, center_x + 4, center_y + 4};
-    lv_draw_rect(&layer, &rect_dsc, &center_area);
-
-    // 完成层绘制
-    lv_canvas_finish_layer(canvas, &layer);
 }
 
 /**
@@ -644,6 +686,9 @@ lv_obj_t *createPage_qmc5883l(void)
 
     // 创建UI更新定时器（500ms更新UI，降低更新频率）
     g_update_timer = lv_timer_create(update_ui_timer_cb, 100, NULL);
+
+    // 初始化指南针显示
+    update_compass(0.0f, 0.0f);
 
     // 立即触发一次数据更新，确保UI有初始数据
     qmc5883l_service_data_t initial_data;
